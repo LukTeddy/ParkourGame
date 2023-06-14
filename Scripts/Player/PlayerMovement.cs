@@ -8,15 +8,19 @@ public class PlayerMovement : MonoBehaviour
     private float moveSpeed;
     public float walkSpeed;
     public float sprintSpeed;
+    public float dashSpeed;
     public float slideSpeed;
     public float wallrunSpeed;
     public float climbSpeed;
+    public float vaultSpeed;
 
     private float desiredMoveSpeed;
     private float lastDesiredMoveSpeed;
 
     public float speedIncreaseMultiplier;
     public float slopeIncreaseMultiplier;
+
+    public float maxYSpeed;
 
     public float groundDrag;
 
@@ -62,12 +66,16 @@ public class PlayerMovement : MonoBehaviour
 
     public enum MovementState
     {
+        freeze,
+        unlimited,
         walking,
         sprinting,
         wallrunning,
         climbing,
+        vaulting,
         crouching,
         sliding,
+        dashing,
         air
     }
 
@@ -75,6 +83,14 @@ public class PlayerMovement : MonoBehaviour
     public bool crouching;
     public bool wallrunning;
     public bool climbing;
+    public bool vaulting;
+    public bool dashing;
+
+    public bool freeze;
+    public bool unlimited;
+
+    public bool restricted;
+
 
     private void Start()
     {
@@ -94,7 +110,7 @@ public class PlayerMovement : MonoBehaviour
         SpeedControl();
         StateHandler();
 
-        if (grounded)
+        if (grounded && state != MovementState.dashing)
         {
             rb.drag = groundDrag;
         }
@@ -135,9 +151,35 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    bool keepMomentum;
     private void StateHandler()
     {
-        if (climbing)
+        if (freeze)
+        {
+            state = MovementState.freeze;
+            rb.velocity = Vector3.zero;
+            desiredMoveSpeed = 0f;
+        }
+
+        else if (unlimited)
+        {
+            state = MovementState.unlimited;
+            moveSpeed = 999f;
+        }
+
+        else if (dashing)
+        {
+            state = MovementState.dashing;
+            desiredMoveSpeed = dashSpeed;
+        }
+
+        else if (vaulting)
+        {
+            state = MovementState.vaulting;
+            desiredMoveSpeed = vaultSpeed;
+        }
+
+        else if (climbing)
         {
             state = MovementState.climbing;
             desiredMoveSpeed = climbSpeed;
@@ -154,7 +196,10 @@ public class PlayerMovement : MonoBehaviour
             state = MovementState.sliding;
 
             if (OnSlope() && rb.velocity.y < 0.1f)
+            {
                 desiredMoveSpeed = slideSpeed;
+                keepMomentum = true;
+            }
             else
             {
                 desiredMoveSpeed = sprintSpeed;
@@ -182,19 +227,32 @@ public class PlayerMovement : MonoBehaviour
         else
         {
             state = MovementState.air;
+
+            if (desiredMoveSpeed < sprintSpeed)
+                desiredMoveSpeed = walkSpeed;
+            else
+                desiredMoveSpeed = sprintSpeed;
         }
 
-        if (Mathf.Abs(desiredMoveSpeed - lastDesiredMoveSpeed) > 4f && moveSpeed != 0)
+        bool desiredMoveSpeedHasChanged = desiredMoveSpeed != lastDesiredMoveSpeed;
+
+        if (desiredMoveSpeedHasChanged)
         {
-            StopAllCoroutines();
-            StartCoroutine(SmoothlyLerpMoveSpeed());
-        }
-        else
-        {
-            moveSpeed = desiredMoveSpeed;
+            if (keepMomentum)
+            {
+                StopAllCoroutines();
+                StartCoroutine(SmoothlyLerpMoveSpeed());
+            }
+            else
+            {
+                StopAllCoroutines();
+                moveSpeed = desiredMoveSpeed;
+            }
         }
 
         lastDesiredMoveSpeed = desiredMoveSpeed;
+
+        if (Mathf.Abs(desiredMoveSpeed - moveSpeed) < 0.1f) keepMomentum = false;
     }
 
     private IEnumerator SmoothlyLerpMoveSpeed()
@@ -226,7 +284,9 @@ public class PlayerMovement : MonoBehaviour
 
     private void MovePlayer()
     {
-        if (climbingScript.exitingWall) return;
+        if (state == MovementState.dashing) return;
+
+        if (restricted) return;
         
         moveDirection = orientation.forward * verticalInput + orientation.right * horizontalInput;
 
@@ -275,6 +335,9 @@ public class PlayerMovement : MonoBehaviour
                 rb.velocity = new Vector3(limitedVelocity.x, rb.velocity.y, limitedVelocity.z);
             }
         }
+
+        if (maxYSpeed != 0 && rb.velocity.y > maxYSpeed)
+            rb.velocity = new Vector3(rb.velocity.x, maxYSpeed, rb.velocity.z);
     }
 
     private void Jump()
