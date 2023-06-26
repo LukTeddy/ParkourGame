@@ -50,8 +50,9 @@ public class Grappling : MonoBehaviour
     {
         if (grapplingCdTimer > 0) return;
 
-        grappling = true;
+        GetComponent<Swinging>().StopSwing();
 
+        grappling = true;
         pm.freeze = true;
 
         RaycastHit hit;
